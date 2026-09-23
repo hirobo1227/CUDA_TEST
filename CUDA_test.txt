@@ -1,0 +1,41 @@
+mkdir -p ~/jetson-test
+cd ~/jetson-test
+
+cat > gpu_test.cu <<'EOF'
+#include <cstdio>
+#include <cuda_runtime.h>
+
+#define CHECK(call) do { \
+    cudaError_t e = (call); \
+    if (e != cudaSuccess) { \
+        printf("FAIL: %s\n", cudaGetErrorString(e)); \
+        return 1; \
+    } \
+} while (0)
+
+__global__ void calculate(int* result) {
+    *result = 123 + 456;
+}
+
+int main() {
+    cudaDeviceProp prop;
+    CHECK(cudaGetDeviceProperties(&prop, 0));
+    printf("GPU: %s\n", prop.name);
+
+    int* device;
+    int result = 0;
+    CHECK(cudaMalloc(&device, sizeof(int)));
+    calculate<<<1, 1>>>(device);
+    CHECK(cudaGetLastError());
+    CHECK(cudaDeviceSynchronize());
+    CHECK(cudaMemcpy(&result, device, sizeof(int),
+                     cudaMemcpyDeviceToHost));
+    CHECK(cudaFree(device));
+
+    printf("123 + 456 = %d\n", result);
+    puts(result == 579 ? "CUDA TEST: PASS" : "CUDA TEST: FAIL");
+    return result == 579 ? 0 : 1;
+}
+EOF
+
+/usr/local/cuda/bin/nvcc -arch=native gpu_test.cu -o gpu_test && ./gpu_test
